@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import logging
 import asyncio
 from aiohttp import web
@@ -38,6 +39,14 @@ def download_media(url: str) -> str:
         filename = ydl.prepare_filename(info)
         return filename
 
+# --- ساخت نوار پیشرفت گرافیکی ---
+def make_progress_bar(percent: float) -> str:
+    total_blocks = 10
+    filled_blocks = int(percent / 10)
+    empty_blocks = total_blocks - filled_blocks
+    bar = "█" * filled_blocks + "░" * empty_blocks
+    return f"[{bar}] {int(percent)}%"
+
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.effective_chat or update.effective_chat.type not in ['group', 'supergroup']:
         return
@@ -69,23 +78,42 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         file_path = await loop.run_in_executor(None, download_media, target_url)
 
         if os.path.exists(file_path):
-            await status_msg.edit_text("📤 در حال آپلود توی گروه...")
+            total_size = os.path.getsize(file_path)
+            last_update_time = [0] # برای مدیریت زمان ویرایش پیام (جلوگیری از لیمیت تلگرام)
+
+            # تابع پیشرفت آپلود
+            async def progress(current, total):
+                now = time.time()
+                # ادیت پیام حداکثر هر ۲.۵ ثانیه یک‌بار انجام می‌شود تا تلگرام ربات را بن/محدود نکند
+                if now - last_update_time[0] > 2.5 or current == total:
+                    last_update_time[0] = now
+                    percent = (current / total) * 100
+                    bar_text = make_progress_bar(percent)
+                    msg_text = (
+                        f"در حال آپلود ویدیو در گروه | شکیبا باشید!\n\n"
+                        f"{bar_text}"
+                    )
+                    try:
+                        await status_msg.edit_text(msg_text)
+                    except Exception:
+                        pass
 
             with open(file_path, 'rb') as video_file:
                 await update.message.reply_video(
                     video=video_file,
-                    caption=f"📥 دانلود شده از {source_type} | کانال نمدستان",
+                    caption=f"📥 دانلود شده از {source_type} | سارا چرخشی",
                     reply_to_message_id=update.message.message_id,
                     write_timeout=300,
-                    read_timeout=300
-                )
+                    read_timeout=300,
+                    progress=progress
+                )  # <-- این پرانتز بسته شدن مهمه!
             
             os.remove(file_path)
             await status_msg.delete()
 
     except yt_dlp.utils.DownloadError as e:
         logging.error(f"DownloadError: {e}")
-        await status_msg.edit_text("❌ دانلود ناموفق بود! (احتمالاً پیج خصوصی است یا لینک معتبر نیست).")
+        await status_msg.edit_text("❌ کیرم تو طرز لینک دادنت کصخل این چیه دادی؟ یا لینک اشتباهه یا پیج طرف پرایوته")
     except Exception as e:
         logging.error(f"Error downloading: {e}")
         await status_msg.edit_text(f"❌ خطای دانلود: {str(e)}")
@@ -104,7 +132,6 @@ async def main():
     group_filter = filters.ChatType.GROUPS & (filters.TEXT | filters.CAPTION) & ~filters.COMMAND
     app.add_handler(MessageHandler(group_filter, handle_group_message))
 
-    # آنلاین کردن وب‌سرور
     web_app = web.Application()
     web_app.router.add_get('/', handle_ping)
     runner = web.AppRunner(web_app)
@@ -114,7 +141,7 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
-    print("ربات دانلودر با وب‌سرور آنلاین شد...")
+    print("ربات دانلودر با وب‌سرور و نوار پیشرفت آنلاین شد...")
 
     async with app:
         await app.initialize()
@@ -124,4 +151,4 @@ async def main():
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    asyncio.run(main())        
+    asyncio.run(main())       
