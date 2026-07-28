@@ -18,21 +18,29 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-BOT_TOKEN = "8794175319:AAHzp7Ntp-gK7x6b2E4YJOOJLTUwU3QMDyI"
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8794175319:AAHzp7Ntp-gK7x6b2E4YJOOJLTUwU3QMDyI")
 
+# الگوی شناسایی لینک‌ها (اینستاگرام، یوتیوب، تیک‌تاک)
 INSTAGRAM_REGEX = r'(https?://(?:www\.)?instagram\.com/(?:p|reel|reels|stories)/[A-Za-z0-9_.-]+)'
 YOUTUBE_REGEX = r'(https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[A-Za-z0-9_.-]+)'
+TIKTOK_REGEX = r'(https?://(?:www\.|vt\.|vm\.)?tiktok\.com/[A-Za-z0-9_.-]+)'
 
-def download_media(url: str) -> str:
+def download_media(url: str, source_type: str) -> str:
+    # تنظیمات اختصاصی کیفیت و فرمت
     ydl_opts = {
-        'format': 'best',
+        # دریافت حداکثر کیفیت 720p و ترکیب ویدیو + صدا برای یوتیوب
+        'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'quiet': True,
         'no_warnings': True,
         'socket_timeout': 60,
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
-    
+
+    # اگر فایل کوکی در سرور موجود باشد، آن را اضافه می‌کند (برای استوری و ریلز)
+    if os.path.exists('cookies.txt'):
+        ydl_opts['cookiefile'] = 'cookies.txt'
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info)
@@ -48,6 +56,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     insta_match = re.search(INSTAGRAM_REGEX, message_text)
     yt_match = re.search(YOUTUBE_REGEX, message_text)
+    tiktok_match = re.search(TIKTOK_REGEX, message_text)
 
     target_url = None
     source_type = ""
@@ -58,18 +67,28 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     elif yt_match:
         target_url = yt_match.group(0)
         source_type = "یوتیوب"
+    elif tiktok_match:
+        target_url = tiktok_match.group(0)
+        source_type = "تیک‌تاک"
 
     if not target_url:
         return
 
-    status_msg = await update.message.reply_text(f"⏳ در حال دانلود از {source_type}...")
+    status_msg = await update.message.reply_text(f"⏳ در حال دانلود از {source_type} (کیفیت 720p)...")
+    file_path = None
 
     try:
         loop = asyncio.get_running_loop()
-        file_path = await loop.run_in_executor(None, download_media, target_url)
+        file_path = await loop.run_in_executor(None, download_media, target_url, source_type)
 
-        if os.path.exists(file_path):
-            await status_msg.edit_text("📤 در حال آپلود ویدیو در گروه | شکیبا باشید! ⏳")
+        if file_path and os.path.exists(file_path):
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            if file_size_mb > 50:
+                await status_msg.edit_text("⚠️ حجم ویدیو بیشتر از ۵۰ مگابایت است و تلگرام اجازه آپلود آن را نمی‌دهد.")
+                os.remove(file_path)
+                return
+
+            await status_msg.edit_text("📤 در حال آپلود ویدیو...")
 
             with open(file_path, 'rb') as video_file:
                 await update.message.reply_video(
@@ -80,17 +99,22 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
                     read_timeout=300
                 )
             
-            os.remove(file_path)
             await status_msg.delete()
 
     except yt_dlp.utils.DownloadError as e:
         logging.error(f"DownloadError: {e}")
-        await status_msg.edit_text("این چیه‌! کصخل یا لینک اشتباه دادی یا پیج طرف پرایوته! 🫥")
+        await status_msg.edit_text("❌ دانلود ناموفق بود! ممکن است ویدیو خصوصی باشد یا لیمیت شده باشد.")
     except Exception as e:
         logging.error(f"Error downloading: {e}")
-        await status_msg.edit_text("این چیه‌! کصخل یا لینک اشتباه دادی یا پیج طرف پرایوته! 🫥")
+        await status_msg.edit_text("❌ خطایی در پردازش ویدیو رخ داد.")
+    finally:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as cleanup_error:
+                logging.error(f"Error removing file: {cleanup_error}")
 
-# --- وب‌سرور داخلی برای Render ---
+# --- وب‌سرور داخلی ---
 async def handle_ping(request):
     return web.Response(text="Downloader Bot is Alive!")
 
@@ -113,14 +137,13 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
 
-    print("ربات دانلودر با وب‌سرور آنلاین شد...")
+    print("ربات دانلودر آنلاین شد...")
 
     async with app:
         await app.initialize()
         await app.start()
         await app.updater.start_polling(drop_pending_updates=True)
-        await asyncio.sleep(1)
         await asyncio.Event().wait()
         
 if __name__ == "__main__":
-    asyncio.run(main())        
+    asyncio.run(main())
