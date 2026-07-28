@@ -18,7 +18,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8794175319:AAHzp7Ntp-gK7x6b2E4YJOOJLTUwU3QMDyIE")
 
 # الگوی شناسایی لینک‌ها (اینستاگرام، یوتیوب، تیک‌تاک)
 INSTAGRAM_REGEX = r'(https?://(?:www\.)?instagram\.com/(?:p|reel|reels|stories)/[A-Za-z0-9_.-]+)'
