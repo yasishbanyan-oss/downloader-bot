@@ -13,31 +13,38 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 import yt_dlp
 
+# تنظیم لاگ‌ها
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8794175319:AAH9FA3KO9sWjn-E-lBBfriZUXOu---4BO4")
+# دریافت توکن از متغیرهای محیطی
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# الگوی شناسایی لینک‌ها (اینستاگرام، یوتیوب، تیک‌تاک)
+# الگوهای جامع برای شناسایی لینک‌ها
 INSTAGRAM_REGEX = r'(https?://(?:www\.)?instagram\.com/(?:p|reel|reels|stories)/[A-Za-z0-9_.-]+)'
-YOUTUBE_REGEX = r'(https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[A-Za-z0-9_.-]+)'
+YOUTUBE_REGEX = r'(https?://(?:www\.|m\.)?(?:youtube\.com/(?:watch\?v=|shorts/|embed/)|youtu\.be/)[A-Za-z0-9_-]+)'
 TIKTOK_REGEX = r'(https?://(?:www\.|vt\.|vm\.)?tiktok\.com/[A-Za-z0-9_.-]+)'
 
-def download_media(url: str, source_type: str) -> str:
-    # تنظیمات اختصاصی کیفیت و فرمت
+def download_media(url: str) -> str:
     ydl_opts = {
-        # دریافت حداکثر کیفیت 720p و ترکیب ویدیو + صدا برای یوتیوب
-        'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best',
+        # دریافت بهترین ویدیو تک‌فایلی تا 720p یا ترکیب صدا و ویدیو
+        'format': 'best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'quiet': True,
         'no_warnings': True,
         'socket_timeout': 60,
+        # دور زدن محدودیت‌های جدید یوتیوب برای دیتاسنترها
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web']
+            }
+        },
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
 
-    # اگر فایل کوکی در سرور موجود باشد، آن را اضافه می‌کند (برای استوری و ریلز)
+    # اگر فایل کوکی وجود داشته باشد (برای استوری و ریلز)
     if os.path.exists('cookies.txt'):
         ydl_opts['cookiefile'] = 'cookies.txt'
 
@@ -74,18 +81,17 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if not target_url:
         return
 
-    status_msg = await update.message.reply_text(f"⏳ در حال دانلود از {source_type} (کیفیت 720p)...")
+    status_msg = await update.message.reply_text(f"⏳ در حال دانلود از {source_type}...")
     file_path = None
 
     try:
         loop = asyncio.get_running_loop()
-        file_path = await loop.run_in_executor(None, download_media, target_url, source_type)
+        file_path = await loop.run_in_executor(None, download_media, target_url)
 
         if file_path and os.path.exists(file_path):
             file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
             if file_size_mb > 50:
                 await status_msg.edit_text("⚠️ حجم ویدیو بیشتر از ۵۰ مگابایت است و تلگرام اجازه آپلود آن را نمی‌دهد.")
-                os.remove(file_path)
                 return
 
             await status_msg.edit_text("📤 در حال آپلود ویدیو...")
@@ -103,11 +109,12 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     except yt_dlp.utils.DownloadError as e:
         logging.error(f"DownloadError: {e}")
-        await status_msg.edit_text("❌ دانلود ناموفق بود! ممکن است ویدیو خصوصی باشد یا لیمیت شده باشد.")
+        await status_msg.edit_text("❌ دانلود ناموفق بود! ممکن است لینک اشتباه باشد یا ویدیو خصوصی باشد.")
     except Exception as e:
         logging.error(f"Error downloading: {e}")
         await status_msg.edit_text("❌ خطایی در پردازش ویدیو رخ داد.")
     finally:
+        # پاک‌سازی حتمی فایل پس از دانلود یا بروز خطا
         if file_path and os.path.exists(file_path):
             try:
                 os.remove(file_path)
