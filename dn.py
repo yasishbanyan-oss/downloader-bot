@@ -13,29 +13,29 @@ from telegram.ext import (
 from telegram.request import HTTPXRequest
 import yt_dlp
 
-# تنظیم لاگ‌ها
+# تنظیم سیستم لاگینگ
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# دریافت توکن از متغیرهای محیطی
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8794175319:AAGmv2KePM8ZFipbA4yev7PKSfnY0c5pqvg")
+# دریافت توکن جدید از متغیرهای محیطی یا مقدار مستقیم
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8794175319:AAGAEB2MvL1FKYHTLG43FVFQMtsIZBwlSIE")
 
-# الگوهای جامع برای شناسایی لینک‌ها
+# الگوهای هوشمند شناسایی لینک‌ها
 INSTAGRAM_REGEX = r'(https?://(?:www\.)?instagram\.com/(?:p|reel|reels|stories)/[A-Za-z0-9_.-]+)'
 YOUTUBE_REGEX = r'(https?://(?:www\.|m\.)?(?:youtube\.com/(?:watch\?v=|shorts/|embed/)|youtu\.be/)[A-Za-z0-9_-]+)'
 TIKTOK_REGEX = r'(https?://(?:www\.|vt\.|vm\.)?tiktok\.com/[A-Za-z0-9_.-]+)'
 
 def download_media(url: str) -> str:
     ydl_opts = {
-        # دریافت بهترین ویدیو تک‌فایلی تا 720p یا ترکیب صدا و ویدیو
+        # انتخاب تک‌فایل یا ترکیب صدا و ویدیو حداکثر تا کیفیت 720p
         'format': 'best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'quiet': True,
         'no_warnings': True,
         'socket_timeout': 60,
-        # دور زدن محدودیت‌های جدید یوتیوب برای دیتاسنترها
+        # دور زدن محدودیت IP دیتاسنترها در یوتیوب
         'extractor_args': {
             'youtube': {
                 'player_client': ['android', 'web']
@@ -44,7 +44,7 @@ def download_media(url: str) -> str:
         'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     }
 
-    # اگر فایل کوکی وجود داشته باشد (برای استوری و ریلز)
+    # اگر فایل کوکی قرار دادید برای استوری‌ها
     if os.path.exists('cookies.txt'):
         ydl_opts['cookiefile'] = 'cookies.txt'
 
@@ -114,14 +114,14 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         logging.error(f"Error downloading: {e}")
         await status_msg.edit_text("❌ خطایی در پردازش ویدیو رخ داد.")
     finally:
-        # پاک‌سازی حتمی فایل پس از دانلود یا بروز خطا
+        # پاک‌سازی قطعی فایل برای پر نشدن دیسک
         if file_path and os.path.exists(file_path):
             try:
                 os.remove(file_path)
             except Exception as cleanup_error:
                 logging.error(f"Error removing file: {cleanup_error}")
 
-# --- وب‌سرور داخلی ---
+# --- وب‌سرور داخلی (برای زنده نگه داشتن روی Render) ---
 async def handle_ping(request):
     return web.Response(text="Downloader Bot is Alive!")
 
