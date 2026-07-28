@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 
 # دریافت توکن از متغیرهای محیطی
-BOT_TOKEN = os.environ.get("8794175319:AAGmv2KePM8ZfIPbA4yev7PKSfnY0c5pqvg")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8794175319:AAGmv2KePM8ZFipbA4yev7PKSfnY0c5pqvg")
 
 # الگوهای جامع برای شناسایی لینک‌ها
 INSTAGRAM_REGEX = r'(https?://(?:www\.)?instagram\.com/(?:p|reel|reels|stories)/[A-Za-z0-9_.-]+)'
